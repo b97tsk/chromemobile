@@ -14,16 +14,14 @@ import (
 )
 
 type ChromeService struct {
-	services    *service.Manager
+	manager     *service.Manager
 	filesDir    string
 	workingPath string
 }
 
 func NewChromeService(filesDir string) *ChromeService {
-	services := service.NewManager()
-	addServices(services)
 	chrome := &ChromeService{
-		services: services,
+		manager:  newManager(),
 		filesDir: filepath.Clean(filesDir),
 	}
 	chrome.loadWorking()
@@ -31,7 +29,7 @@ func NewChromeService(filesDir string) *ChromeService {
 }
 
 func (chrome *ChromeService) Shutdown() {
-	chrome.services.Shutdown()
+	chrome.manager.Shutdown()
 }
 
 func (chrome *ChromeService) IsWorking() bool {
@@ -142,7 +140,7 @@ func (chrome *ChromeService) loadZipFile(zr *zip.Reader, tmpDir string) error {
 func (chrome *ChromeService) loadYAML(filename string) {
 	dir, base := filepath.Dir(filename), filepath.Base(filename)
 	_ = os.Chdir(dir)
-	chrome.services.Load(base)
+	chrome.manager.LoadFile(base)
 }
 
 func (chrome *ChromeService) setWorking(path string) {

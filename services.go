@@ -2,23 +2,23 @@ package chromemobile
 
 import (
 	"github.com/b97tsk/chrome/service"
-	"github.com/b97tsk/chrome/service/goagent"
 	"github.com/b97tsk/chrome/service/http"
-	"github.com/b97tsk/chrome/service/httpfs"
-	"github.com/b97tsk/chrome/service/logging"
-	"github.com/b97tsk/chrome/service/shadowsocks"
+	"github.com/b97tsk/chrome/service/http/goagent"
+	"github.com/b97tsk/chrome/service/http/httpfs"
 	"github.com/b97tsk/chrome/service/socks"
+	"github.com/b97tsk/chrome/service/socks/shadowsocks"
+	"github.com/b97tsk/chrome/service/socks/v2ray"
 	"github.com/b97tsk/chrome/service/tcptun"
-	"github.com/b97tsk/chrome/service/vmess"
 )
 
-func addServices(services *service.Manager) {
-	services.Add(goagent.Service{})
-	services.Add(http.Service{})
-	services.Add(httpfs.Service{})
-	services.Add(logging.Service{})
-	services.Add(shadowsocks.Service{})
-	services.Add(socks.Service{})
-	services.Add(tcptun.Service{})
-	services.Add(vmess.Service{})
+func newManager() *service.Manager {
+	man := service.NewManager()
+	man.Add(goagent.Service{})
+	man.Add(http.Service{})
+	man.Add(httpfs.Service{})
+	man.Add(shadowsocks.Service{})
+	man.Add(socks.Service{})
+	man.Add(tcptun.Service{})
+	man.Add(v2ray.Service{})
+	return man
 }
