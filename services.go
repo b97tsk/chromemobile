@@ -20,5 +20,6 @@ func newManager() *service.Manager {
 	man.Add(socks.Service{})
 	man.Add(tcptun.Service{})
 	man.Add(v2ray.Service{})
+
 	return man
 }
