@@ -13,17 +13,31 @@ import (
 	"github.com/b97tsk/chrome/service"
 )
 
+type LogWriter interface {
+	WriteLog(s string)
+}
+
 type ChromeService struct {
 	manager     *service.Manager
 	filesDir    string
 	workingPath string
 }
 
-func NewChromeService(filesDir string) *ChromeService {
+func NewChromeService(filesDir string, w LogWriter) *ChromeService {
 	chrome := &ChromeService{
 		manager:  newManager(),
 		filesDir: filepath.Clean(filesDir),
 	}
+
+	if w != nil {
+		chrome.manager.SetLogOutput(writerFunc(
+			func(p []byte) (n int, err error) {
+				w.WriteLog(string(p))
+				return len(p), nil
+			},
+		))
+	}
+
 	chrome.loadWorking()
 
 	return chrome
@@ -191,4 +205,10 @@ func (chrome *ChromeService) loadWorking() {
 			chrome.workingPath = path
 		}
 	}
+}
+
+type writerFunc func(p []byte) (n int, err error)
+
+func (f writerFunc) Write(p []byte) (n int, err error) {
+	return f(p)
 }
