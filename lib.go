@@ -1,14 +1,11 @@
 package chromemobile
 
 import (
-	"archive/zip"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/b97tsk/chrome/service"
 )
@@ -38,7 +35,7 @@ func NewChromeService(filesDir string, w LogWriter) *ChromeService {
 		))
 	}
 
-	chrome.loadWorking()
+	_ = chrome.loadWorking()
 
 	return chrome
 }
@@ -51,139 +48,77 @@ func (chrome *ChromeService) IsWorking() bool {
 	return chrome.workingPath != ""
 }
 
-func (chrome *ChromeService) Load(filename string) error {
-	fd, err := os.Open(filename)
+func (chrome *ChromeService) LoadFile(filename string) error {
+	file, err := os.Open(filename)
 	if err != nil {
 		return err
 	}
-	defer fd.Close()
+	defer file.Close()
 
-	return chrome.load(fd)
+	return chrome.Load(file)
 }
 
 func (chrome *ChromeService) LoadURL(url string) (err error) {
-	fd, err := ioutil.TempFile(chrome.filesDir, "~")
-	if err != nil {
-		return
-	}
-
-	defer os.Remove(fd.Name())
-	defer fd.Close()
-
 	resp, err := http.Get(url)
 	if err != nil {
 		return
 	}
 	defer resp.Body.Close()
 
-	_, err = io.Copy(fd, resp.Body)
-	if err != nil {
-		return
-	}
-
 	if resp.StatusCode != http.StatusOK {
 		return errors.New(resp.Status)
 	}
 
-	return chrome.load(fd)
+	return chrome.Load(resp.Body)
 }
 
-func (chrome *ChromeService) load(fd *os.File) (err error) {
-	tmpDir, err := ioutil.TempDir(chrome.filesDir, "tmp")
+func (chrome *ChromeService) Load(r io.Reader) (err error) {
+	dir, err := os.MkdirTemp(chrome.filesDir, workingDirPattern)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
 		if err != nil {
-			os.RemoveAll(tmpDir)
+			os.RemoveAll(dir)
 		} else {
-			chrome.setWorking(tmpDir)
+			chrome.setWorking(dir)
 		}
 	}()
 
-	filesize, _ := fd.Seek(0, io.SeekEnd)
-	_, _ = fd.Seek(0, io.SeekStart)
-
-	if zr, err := zip.NewReader(fd, filesize); err == nil {
-		return chrome.loadZipFile(zr, tmpDir)
-	}
-
-	_, _ = fd.Seek(0, io.SeekStart)
-	data, _ := ioutil.ReadAll(fd)
-
-	filename := filepath.Join(tmpDir, "chrome.yaml")
-	if err := ioutil.WriteFile(filename, data, 0o600); err != nil {
+	file, err := os.OpenFile(
+		filepath.Join(dir, configFileName),
+		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
+		0o600,
+	)
+	if err != nil {
 		return err
 	}
 
-	chrome.loadYAML(filename)
+	if _, err := io.Copy(file, r); err != nil {
+		return err
+	}
 
-	return nil
+	if err := file.Close(); err != nil {
+		return err
+	}
+
+	return chrome.loadDir(dir)
 }
 
-func (chrome *ChromeService) loadZipFile(zr *zip.Reader, tmpDir string) error {
-	var ok bool
-
-	for _, file := range zr.File {
-		if file.Name == "chrome.yaml" {
-			ok = true
-			break
-		}
+func (chrome *ChromeService) loadDir(dir string) error {
+	if err := os.Chdir(dir); err != nil {
+		return err
 	}
 
-	if !ok {
-		return errors.New("chrome.yaml not found in archive")
-	}
-
-	for _, file := range zr.File {
-		if strings.HasSuffix(file.Name, "/") {
-			continue // Skip directories.
-		}
-
-		rc, err := file.Open()
-		if err != nil {
-			return err
-		}
-
-		filename := filepath.Join(tmpDir, file.Name)
-		if !strings.HasPrefix(filename, tmpDir+string(os.PathSeparator)) {
-			continue // Relative path goes up too far.
-		}
-
-		_ = os.MkdirAll(filepath.Dir(filename), 0o600)
-
-		fd, err := os.Create(filename)
-		if err == nil {
-			_, err = io.Copy(fd, rc)
-			if cerr := fd.Close(); err == nil {
-				err = cerr
-			}
-		}
-
-		rc.Close()
-
-		if err != nil {
-			return err
-		}
-	}
-
-	filename := filepath.Join(tmpDir, "chrome.yaml")
-	chrome.loadYAML(filename)
+	chrome.manager.LoadFile(configFileName)
 
 	return nil
-}
-
-func (chrome *ChromeService) loadYAML(filename string) {
-	dir, base := filepath.Dir(filename), filepath.Base(filename)
-	_ = os.Chdir(dir)
-
-	chrome.manager.LoadFile(base)
 }
 
 func (chrome *ChromeService) setWorking(path string) {
-	filename := filepath.Join(chrome.filesDir, "working")
-	_ = ioutil.WriteFile(filename, []byte(path), 0o600)
+	filename := filepath.Join(chrome.filesDir, workingFileName)
+	_ = os.WriteFile(filename, []byte(path), 0o600)
 
 	if chrome.workingPath != "" {
 		os.RemoveAll(chrome.workingPath)
@@ -192,19 +127,23 @@ func (chrome *ChromeService) setWorking(path string) {
 	chrome.workingPath = path
 }
 
-func (chrome *ChromeService) loadWorking() {
-	filename := filepath.Join(chrome.filesDir, "working")
+func (chrome *ChromeService) loadWorking() error {
+	filename := filepath.Join(chrome.filesDir, workingFileName)
 
-	data, err := ioutil.ReadFile(filename)
-	if err == nil {
-		path := string(data)
-
-		filename := filepath.Join(path, "chrome.yaml")
-		if _, err := os.Stat(filename); err == nil {
-			chrome.loadYAML(filename)
-			chrome.workingPath = path
-		}
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return err
 	}
+
+	dir := string(content)
+
+	if err := chrome.loadDir(dir); err != nil {
+		return err
+	}
+
+	chrome.workingPath = dir
+
+	return nil
 }
 
 type writerFunc func(p []byte) (n int, err error)
@@ -212,3 +151,9 @@ type writerFunc func(p []byte) (n int, err error)
 func (f writerFunc) Write(p []byte) (n int, err error) {
 	return f(p)
 }
+
+const (
+	configFileName    = "chrome.config"
+	workingDirPattern = "tmp"
+	workingFileName   = "working"
+)
