@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/b97tsk/chrome/service"
+	"github.com/b97tsk/chrome"
 )
 
 type LogWriter interface {
@@ -15,7 +15,7 @@ type LogWriter interface {
 }
 
 type ChromeService struct {
-	manager     *service.Manager
+	manager     *chrome.Manager
 	filesDir    string
 	workingPath string
 }
@@ -111,9 +111,7 @@ func (chrome *ChromeService) loadDir(dir string) error {
 		return err
 	}
 
-	chrome.manager.LoadFile(configFileName)
-
-	return nil
+	return chrome.manager.LoadFile(configFileName)
 }
 
 func (chrome *ChromeService) setWorking(path string) {
